@@ -1,0 +1,118 @@
+// Modelo de datos de Jorge Motors (modelo del Figma + canal de aviso del proveedor).
+// Los valores de tipo enum se guardan como texto y se validan con Zod en la API
+// y con triggers en la base (ver prisma/integridad.ts).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Categoria {
+  id          Int        @id @default(autoincrement())
+  nombre      String     @unique
+  descripcion String?
+  productos   Producto[]
+
+  @@map("categoria")
+}
+
+model Proveedor {
+  id             Int           @id @default(autoincrement())
+  nombre         String
+  email          String?
+  telefono       String?
+  contacto       String?
+  // CORREO | SMS | WHATSAPP: decide la estrategia de envío de las alertas
+  canalPreferido String        @default("CORREO")
+  productos      Producto[]
+  alertas        AlertaStock[]
+
+  @@map("proveedor")
+}
+
+model Producto {
+  id             Int           @id @default(autoincrement())
+  codigo         String        @unique
+  nombre         String
+  descripcion    String?
+  ubicacion      String?
+  precioUnitario Float
+  stockMinimo    Int
+  categoriaId    Int
+  proveedorId    Int?
+  categoria      Categoria     @relation(fields: [categoriaId], references: [id], onDelete: Restrict)
+  proveedor      Proveedor?    @relation(fields: [proveedorId], references: [id], onDelete: SetNull)
+  stock          Stock?
+  movimientos    Movimiento[]
+  alertas        AlertaStock[]
+
+  @@index([nombre])
+  @@map("producto")
+}
+
+model Stock {
+  id                  Int      @id @default(autoincrement())
+  productoId          Int      @unique
+  cantidadActual      Int      @default(0)
+  ultimaActualizacion DateTime @default(now()) @updatedAt
+  producto            Producto @relation(fields: [productoId], references: [id], onDelete: Cascade)
+
+  @@map("stock")
+}
+
+model Movimiento {
+  id              Int      @id @default(autoincrement())
+  productoId      Int
+  usuarioId       Int
+  // ENTRADA | SALIDA
+  tipo            String
+  // COMPRA | DEVOLUCION | USO_TALLER | VENTA | AJUSTE
+  motivo          String
+  cantidad        Int
+  stockAnterior   Int
+  stockResultante Int
+  costoUnitario   Float?
+  documento       String?
+  fecha           DateTime @default(now())
+  producto        Producto @relation(fields: [productoId], references: [id], onDelete: Restrict)
+  usuario         Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+
+  @@index([productoId, fecha])
+  @@index([fecha])
+  @@map("movimiento")
+}
+
+model AlertaStock {
+  id              Int        @id @default(autoincrement())
+  productoId      Int
+  proveedorId     Int?
+  stockActual     Int
+  stockMinimo     Int
+  // PENDIENTE -> ENVIADA -> ATENDIDA
+  estado          String     @default("PENDIENTE")
+  mensaje         String?
+  fechaGeneracion DateTime   @default(now())
+  fechaEnvio      DateTime?
+  producto        Producto   @relation(fields: [productoId], references: [id], onDelete: Cascade)
+  proveedor       Proveedor? @relation(fields: [proveedorId], references: [id], onDelete: SetNull)
+
+  @@index([estado])
+  @@map("alerta_stock")
+}
+
+model Usuario {
+  id           Int          @id @default(autoincrement())
+  nombre       String
+  email        String       @unique
+  passwordHash String
+  // ADMINISTRADOR | MECANICO
+  rol          String
+  activo       Boolean      @default(true)
+  movimientos  Movimiento[]
+
+  @@map("usuario")
+}
